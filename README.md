@@ -1,41 +1,80 @@
 # Reelify
 
-Turns a long screen recording into a ~2 minute summary video.
+Reelify turns long screen recordings into concise summary videos using motion analysis and optional LLM vision enrichment.
+
+> **Experimental** — Reelify was built as an exploratory project to see how far a fully local pipeline could go. It works well for personal workflows, but comes with no stability guarantees.
 
 ## What it does
 
-1. Removes idle gaps (no mouse/keyboard/visual change)
-2. Speeds up low-activity sections (smooth timelapse, not hard cuts)
-3. Extracts the most visually distinct keyframes
-4. Optionally burns in subtitles (window titles, visible text via Whisper)
-5. Outputs a compressed summary MP4 + optional JSON activity map
+The pipeline runs in five stages:
+
+1. **Analyse** — compute per-frame motion scores with OpenCV
+2. **Classify** — group frames into idle/active chunks with margin padding
+3. **Speed-map** — assign each chunk a target speed (cut, 8×, 3×, 1×)
+4. **Encode** — assemble segments via FFmpeg concat demuxer + `setpts`
+5. **Enrich (optional)** — extract keyframes and caption them with a local or API vision model
+
+## Usage
+
+### `reelify process` — compress a recording
+
+```bash
+reelify process input.webm
+```
+
+Produces `input_summary.mp4` with idle gaps removed and low-activity sections sped up.
+
+### `reelify analyse` — analyse with LLM vision, output JSON
+
+```bash
+reelify analyse input.webm --provider local --scoring fast
+```
+
+Produces `input_analysis.json` containing segment metadata, keyframe captions, and activity scores.
 
 ## Stack
 
 | Concern | Tool |
 |---|---|
-| Idle gap removal | OpenCV frame diff + input event hooks |
-| Scene detection / keyframes | PySceneDetect |
-| Timelapse / speedup / concat | FFmpeg (`setpts`, `concat` demuxer) |
-| Subtitles | FFmpeg `drawtext` / SRT burn-in |
-| Audio transcription (optional) | Whisper (local) |
-| CLI | Typer |
+| Frame diff / motion analysis | OpenCV |
+| Keyframe / scene detection | PySceneDetect |
+| Encode, speed-up, concat | FFmpeg |
+| CLI framework | Typer |
+| Local vision (default) | LM Studio + Qwen2.5-VL-7B |
+| API vision (optional) | Google Gemini Flash (requires `REELIFY_PRO=1`) |
+| Image preparation | Pillow |
+| LM Studio HTTP client | requests |
 
 ## Requirements
 
 - Python 3.10+
 - FFmpeg (system install)
-- Linux (Ubuntu 22.04+)
+- LM Studio (optional, for local vision)
 
-## Usage
+## Install
 
 ```bash
 pip install -e .
-reelify input.mp4 --output summary.mp4
 ```
 
-## Development
+## Vision providers
+
+Reelify supports two vision provider modes for the `analyse` command:
+
+**Local (default)** — Runs against a local LM Studio instance serving a vision model such as Qwen2.5-VL-7B. LM Studio must be running on `http://localhost:1234` before you invoke the command.
+
+**API** — Uses Google Gemini Flash. Requires setting `REELIFY_PRO=1` and providing a `GOOGLE_API_KEY`:
 
 ```bash
-python3 -m pytest tests/ -q --tb=short
+REELIFY_PRO=1 GOOGLE_API_KEY=your_key reelify analyse input.webm --provider api
 ```
+
+## Development & tests
+
+```bash
+python3 -m pytest tests/ -q
+```
+
+## Status
+
+🧪 **Experimental** — No stability guarantees. APIs, defaults, and behaviour may change between commits.

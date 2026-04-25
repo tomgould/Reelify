@@ -121,7 +121,7 @@ def enrich(
             SegmentMeta(
                 start_frame=chunk.start_frame,
                 end_frame=chunk.end_frame,
-                active=chunk.active,
+                active=bool(chunk.active),
                 caption="",
                 score=0.5,
             )
@@ -188,7 +188,7 @@ def enrich(
             SegmentMeta(
                 start_frame=chunk.start_frame,
                 end_frame=chunk.end_frame,
-                active=chunk.active,
+                active=bool(chunk.active),
                 caption=caption,
                 score=score,
             )
