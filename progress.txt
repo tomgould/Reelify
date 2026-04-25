@@ -6,3 +6,4 @@
 2026-04-25 22:43 fix(cli): replace mktemp with NamedTemporaryFile (#8)
 2026-04-25 22:43 fix(encoder): move -ss after -i for accurate frame seek (#3)
 2026-04-25 22:44 perf(classifier): O(n) two-pass streak sweep (#2)
+2026-04-25 22:48 refactor: P2/P3 cleanups — dead code, subtitles helper, assert, log callable, variable rename (#4,#6,#10,#12,#13)
