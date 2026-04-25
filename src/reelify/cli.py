@@ -55,15 +55,18 @@ def analyse(
 
     typer.echo(f"Analysing {input_path} …")
 
-    result = run_analyse(input_path)
     typer.echo("  Step 1/4: Reading video frames …")
+    result = run_analyse(input_path)
+    typer.echo(f"    Done — {result.total_frames} frames @ {result.fps:.1f}fps ({result.total_frames / result.fps / 60:.1f} min)")
 
+    typer.echo("  Step 2/4: Classifying segments …")
     chunks = classify(result, idle_threshold=0.02)
-    typer.echo(f"  Step 2/4: Classifying segments … ({len(chunks)} segments found)")
+    typer.echo(f"    Done — {len(chunks)} segments found")
 
     keyframe_dir = input_path.parent / f"{input_path.stem}_keyframes"
+    typer.echo("  Step 3/4: Extracting keyframes …")
     keyframe_paths = extract_keyframes(input_path, keyframe_dir)
-    typer.echo(f"  Step 3/4: Extracting keyframes … ({len(keyframe_paths)} keyframes)")
+    typer.echo(f"    Done — {len(keyframe_paths)} keyframes")
 
     vision = get_provider(provider)
     typer.echo(f"  Step 4/4: Enriching with vision (provider={provider}, scoring={scoring}) …")
