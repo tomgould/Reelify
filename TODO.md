@@ -10,7 +10,7 @@ Tasks ordered by priority. Each has loop mode, files, plan, and acceptance crite
   1. In `pipeline.py`, rename the inner `segments` variable in the subtitles block to `sub_segments`.
   2. In `tests/test_cli.py`, add a test that calls `pipeline.run()` with `subtitles=True` on a stub video and verifies it does not crash or produce wrong output.
 - **Acceptance:** The `pipeline.py` subtitles block no longer shadows the outer `segments` list, and the new test passes.
-- **Status:** [ ] todo
+- **Status:** [x] done
 
 ### [LOOP: Mini] Bug: `cli.py` enrichment flag unreachable (#5)
 - **Files:** `src/reelify/cli.py`, `tests/test_cli.py`

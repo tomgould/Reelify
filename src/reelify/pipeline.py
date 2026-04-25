@@ -41,9 +41,9 @@ def run(
         with tempfile.TemporaryDirectory() as tmpdir:
             wav_path = Path(tmpdir) / "audio.wav"
             extract_audio(input_path, wav_path)
-            segments = transcribe(wav_path)
+            sub_segments = transcribe(wav_path)
             srt_path = output_path.with_suffix(".srt")
-            write_srt(segments, srt_path)
+            write_srt(sub_segments, srt_path)
             print("  Burning subtitles…")
             burn_subtitles(output_path, srt_path, output_path)
 
