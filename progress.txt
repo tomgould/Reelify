@@ -1,0 +1,3 @@
+# Reelify progress log — append one line per completed task
+# Format: YYYY-MM-DD HH:MM <conventional-commit style summary>
+# ---
