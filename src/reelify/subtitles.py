@@ -73,42 +73,26 @@ def write_srt(segments: list[dict], output_path: Path) -> Path:
     return output_path
 
 
+def _run_ffmpeg_burn(input_path: Path, srt_path: Path, output_path: Path) -> None:
+    cmd = [
+        "ffmpeg", "-y", "-i", str(input_path),
+        "-vf", f"subtitles={str(srt_path)}",
+        "-c:a", "copy",
+        str(output_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"FFmpeg subtitle burn failed: {result.stderr.decode('utf-8', errors='replace')}"
+        )
+
+
 def burn_subtitles(video_path: Path, srt_path: Path, output_path: Path) -> None:
     """Burn SRT subtitles into video using FFmpeg subtitles= filter."""
     if video_path == output_path:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_output = Path(tmpdir) / "output.mp4"
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(video_path),
-                "-vf",
-                f"subtitles={str(srt_path)}",
-                "-c:a",
-                "copy",
-                str(tmp_output),
-            ]
-            result = subprocess.run(cmd, capture_output=True, check=False)
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"FFmpeg subtitle burn failed: {result.stderr.decode('utf-8', errors='replace')}"
-                )
+            _run_ffmpeg_burn(video_path, srt_path, tmp_output)
             tmp_output.replace(output_path)
     else:
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(video_path),
-            "-vf",
-            f"subtitles={str(srt_path)}",
-            "-c:a",
-            "copy",
-            str(output_path),
-        ]
-        result = subprocess.run(cmd, capture_output=True, check=False)
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"FFmpeg subtitle burn failed: {result.stderr.decode('utf-8', errors='replace')}"
-            )
+        _run_ffmpeg_burn(video_path, srt_path, output_path)

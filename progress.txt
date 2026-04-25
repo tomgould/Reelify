@@ -5,3 +5,4 @@
 2026-04-25 22:41 feat(cli): expose --enrichment/--no-enrichment flag (#5)
 2026-04-25 22:43 fix(cli): replace mktemp with NamedTemporaryFile (#8)
 2026-04-25 22:43 fix(encoder): move -ss after -i for accurate frame seek (#3)
+2026-04-25 22:44 perf(classifier): O(n) two-pass streak sweep (#2)

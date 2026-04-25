@@ -78,14 +78,6 @@ def _nearest_chunk_index(frame: int, chunks: list[Chunk]) -> int:
     return best_idx
 
 
-def _keyframes_for_chunk(chunk: Chunk, keyframe_paths: list[Path]) -> list[Path]:
-    """Return keyframes whose approximate source frame falls within *chunk*."""
-    matched: list[Path] = []
-    for kf_path in keyframe_paths:
-        matched.append(kf_path)  # without frame metadata we can't filter precisely
-    return matched
-
-
 def _combine_captions(captions: list[str]) -> str:
     """Combine multiple captions into a single description."""
     unique = list(dict.fromkeys(c.strip() for c in captions if c.strip()))

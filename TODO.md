@@ -56,7 +56,7 @@ Tasks ordered by priority. Each has loop mode, files, plan, and acceptance crite
   1. Delete the `_keyframes_for_chunk` function entirely.
   2. Remove any now-unused imports.
 - **Acceptance:** `_keyframes_for_chunk` no longer exists in `enricher.py`, and all tests still pass.
-- **Status:** [ ] todo
+- **Status:** [x] done
 
 ### [LOOP: Mini] Perf: `encoder.py` sequential segment encoding (#9)
 - **Files:** `src/reelify/encoder.py`, `tests/test_encoder.py`
@@ -73,7 +73,7 @@ Tasks ordered by priority. Each has loop mode, files, plan, and acceptance crite
   1. Extract a private helper `_run_ffmpeg_burn(input_path, srt_path, output_path)` that wraps the ffmpeg invocation.
   2. Call the helper from both branches of `if video_path == output_path` in `burn_subtitles`.
 - **Acceptance:** The ffmpeg invocation appears exactly once in `subtitles.py`, and subtitle burn-in tests remain green.
-- **Status:** [ ] todo
+- **Status:** [x] done
 
 ## P3 — Low priority / polish
 
