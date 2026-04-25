@@ -46,7 +46,7 @@ Tasks ordered by priority. Each has loop mode, files, plan, and acceptance crite
   2. Ensure existing `tests/test_classifier.py` stays green.
   3. Add a performance test with a 54,000-frame input that completes in <1s.
 - **Acceptance:** Existing tests pass, and the new performance test runs in under one second.
-- **Status:** [ ] todo
+- **Status:** [x] done
 
 ## P2 — Medium priority
 

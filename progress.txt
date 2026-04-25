@@ -1,3 +1,7 @@
 # Reelify progress log — append one line per completed task
 # Format: YYYY-MM-DD HH:MM <conventional-commit style summary>
 # ---
+2026-04-25 22:38 fix(pipeline): rename inner segments → sub_segments (#1)
+2026-04-25 22:41 feat(cli): expose --enrichment/--no-enrichment flag (#5)
+2026-04-25 22:43 fix(cli): replace mktemp with NamedTemporaryFile (#8)
+2026-04-25 22:43 fix(encoder): move -ss after -i for accurate frame seek (#3)

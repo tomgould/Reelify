@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from reelify.analyser import AnalysisResult
 from reelify.classifier import Chunk, classify
@@ -63,3 +65,19 @@ def test_chunks_cover_all_frames() -> None:
     chunks = classify(result, idle_threshold=0.5, margin_secs=0.0)
     total = sum(chunk.end_frame - chunk.start_frame for chunk in chunks)
     assert total == result.total_frames
+
+
+def test_margin_padding_performance() -> None:
+    """O(n) padding should handle 54000 frames in well under 1 second."""
+    fps = 30.0
+    total = 54_000
+    sample_every = 1
+    scores = [0.05 if i % 100 == 0 else 0.0 for i in range(total)]
+    result = AnalysisResult(
+        scores=scores, fps=fps, total_frames=total,
+        sample_every=sample_every, width=1920, height=1080,
+    )
+    start = time.monotonic()
+    classify(result, idle_threshold=0.02, margin_secs=0.3)
+    elapsed = time.monotonic() - start
+    assert elapsed < 1.0, f"classify took {elapsed:.2f}s — O(n²) regression?"
