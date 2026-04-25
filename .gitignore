@@ -1,0 +1,37 @@
+# IDE
+/.idea/
+/.vscode/
+
+# AI configs
+*.omc*
+.claude/
+.mullet/
+*mullet.yaml*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Misc
+*.log
+*.tmp
+.DS_Store
