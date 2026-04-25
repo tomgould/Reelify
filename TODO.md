@@ -82,7 +82,7 @@ Tasks ordered by priority. Each has loop mode, files, plan, and acceptance crite
 - **Plan:**
   1. Replace `assert proc.stdout is not None` with `if proc.stdout is None: raise RuntimeError("ffmpeg stdout is None")`.
 - **Acceptance:** No `assert` remains for the stdout check; `RuntimeError` is raised on the same condition, and tests still pass.
-- **Status:** [ ] todo
+- **Status:** [x] done
 
 ### [LOOP: Micro] Code quality: `pipeline.py` print → log callable (#13)
 - **Files:** `src/reelify/pipeline.py`
@@ -90,14 +90,14 @@ Tasks ordered by priority. Each has loop mode, files, plan, and acceptance crite
   1. Add optional `log: Callable[[str], None] = lambda _: None` parameter to `run()`.
   2. Replace the two `print(...)` calls with `log(...)`.
 - **Acceptance:** `pipeline.run()` accepts a `log` callable, prints nothing by default, and all pipeline tests pass.
-- **Status:** [ ] todo
+- **Status:** [x] done
 
 ### [LOOP: Micro] Code quality: `analyser.py` variable name `l` (#12)
 - **Files:** `src/reelify/analyser.py`
 - **Plan:**
   1. Rename `l` to `line` in the list comprehension on line 33.
 - **Acceptance:** The variable is renamed, and all analyser tests pass.
-- **Status:** [ ] todo
+- **Status:** [x] done
 
 ## Completed
 

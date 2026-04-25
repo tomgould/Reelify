@@ -29,7 +29,9 @@ def run(
     output_path: Path,
     config: ReelifyConfig,
     progress_callback: Callable[[int, int], None] | None = None,
+    log: Callable[[str], None] | None = None,
 ) -> None:
+    _log = log if log is not None else lambda _: None
     result = analyse(input_path, progress_callback=progress_callback)
     chunks = classify(result, config.idle_threshold)
     segments = build_speed_map(chunks, result, float(config.max_duration))
@@ -37,14 +39,14 @@ def run(
 
     if config.subtitles:
         from reelify.subtitles import extract_audio, transcribe, write_srt, burn_subtitles
-        print("  Transcribing audio (Whisper)…")
+        _log("  Transcribing audio (Whisper)…")
         with tempfile.TemporaryDirectory() as tmpdir:
             wav_path = Path(tmpdir) / "audio.wav"
             extract_audio(input_path, wav_path)
             sub_segments = transcribe(wav_path)
             srt_path = output_path.with_suffix(".srt")
             write_srt(sub_segments, srt_path)
-            print("  Burning subtitles…")
+            _log("  Burning subtitles…")
             burn_subtitles(output_path, srt_path, output_path)
 
     keyframe_paths: list[Path] = []

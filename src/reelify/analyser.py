@@ -30,7 +30,7 @@ def _probe(video_path: Path) -> tuple[float, float, int, int]:
         text=True,
         check=True,
     )
-    lines = [l.strip() for l in result.stdout.strip().splitlines() if l.strip()]
+    lines = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
     width = height = fps_val = duration = 0.0
     for line in lines:
         parts = line.split(",")
@@ -72,7 +72,8 @@ def analyse(
         "-",
     ]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    assert proc.stdout is not None
+    if proc.stdout is None:
+        raise RuntimeError("ffmpeg stdout is None")
 
     frame_bytes = _THUMB_WIDTH * thumb_height
     scores: list[float] = []
