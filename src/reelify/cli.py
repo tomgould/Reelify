@@ -5,7 +5,12 @@ from typing import Optional
 
 import typer
 
-from reelify.pipeline import ReelifyConfig, run
+from reelify.analyser import analyse
+from reelify.classifier import classify
+from reelify.encoder import encode
+from reelify.keyframes import extract_keyframes
+from reelify.pipeline import ReelifyConfig
+from reelify.speed_map import build_speed_map
 
 app = typer.Typer(help="Turn long screen recordings into concise summary videos.")
 
@@ -33,7 +38,61 @@ def process(
     typer.echo(f"Output:  {output}")
     typer.echo(f"Config:  max_duration={config.max_duration}, idle_threshold={config.idle_threshold}, keyframes={config.keyframes}, subtitles={config.subtitles}")
 
-    run(input_path, output, config)
+    typer.echo("  Step 1: Analysing frames…")
+
+    def _analysis_progress(sampled: int, total: int) -> None:
+        if total > 0:
+            pct = int((sampled / total) * 100)
+            typer.echo(f"\r    {pct}%", nl=False)
+
+    result = analyse(input_path, progress_callback=_analysis_progress)
+    typer.echo()
+
+    typer.echo("  Step 2: Classifying segments…")
+    chunks = classify(result, config.idle_threshold)
+
+    typer.echo("  Step 3: Building speed map…")
+    segments = build_speed_map(chunks, result, float(config.max_duration))
+
+    typer.echo("  Step 4: Encoding video…")
+
+    def _encode_progress(idx: int, total: int) -> None:
+        typer.echo(f"  Encoding segment {idx}/{total}…")
+
+    encode(
+        input_path,
+        output,
+        segments,
+        result.fps,
+        result.width,
+        result.height,
+        progress_callback=_encode_progress,
+    )
+
+    keyframe_paths: list[Path] = []
+    if config.keyframes or config.enrichment:
+        keyframe_dir = output.parent / f"{output.stem}_keyframes"
+        keyframe_paths = extract_keyframes(input_path, keyframe_dir)
+
+    if config.enrichment:
+        from reelify.vision.provider import get_provider
+        from reelify.enricher import enrich
+        vision = get_provider(config.provider)
+        typer.echo(f"  Step 5: Enriching with vision (provider={config.provider}, scoring={config.scoring}) …")
+        enrichment_result = enrich(
+            input_path,
+            keyframe_paths,
+            chunks,
+            result,
+            vision,
+            config.scoring,
+        )
+        if config.metadata:
+            meta_path = output.with_suffix(".json")
+            meta_dict = asdict(enrichment_result.metadata)
+            meta_path.write_text(json.dumps(meta_dict, indent=2))
+
+    typer.echo("Done.")
 
 
 @app.command()
@@ -56,7 +115,14 @@ def analyse(
     typer.echo(f"Analysing {input_path} …")
 
     typer.echo("  Step 1/4: Reading video frames …")
-    result = run_analyse(input_path)
+
+    def _analysis_progress(sampled: int, total: int) -> None:
+        if total > 0:
+            pct = int((sampled / total) * 100)
+            typer.echo(f"\r    {pct}%", nl=False)
+
+    result = run_analyse(input_path, progress_callback=_analysis_progress)
+    typer.echo()
     typer.echo(f"    Done — {result.total_frames} frames @ {result.fps:.1f}fps ({result.total_frames / result.fps / 60:.1f} min)")
 
     typer.echo("  Step 2/4: Classifying segments …")

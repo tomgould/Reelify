@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
@@ -19,10 +20,16 @@ class ReelifyConfig:
     metadata: bool = False
     scoring: str = "fast"
     provider: str = "auto"
+    captions: bool = False
 
 
-def run(input_path: Path, output_path: Path, config: ReelifyConfig) -> None:
-    result = analyse(input_path)
+def run(
+    input_path: Path,
+    output_path: Path,
+    config: ReelifyConfig,
+    progress_callback: Callable[[int, int], None] | None = None,
+) -> None:
+    result = analyse(input_path, progress_callback=progress_callback)
     chunks = classify(result, config.idle_threshold)
     segments = build_speed_map(chunks, result, float(config.max_duration))
     encode(input_path, output_path, segments, result.fps, result.width, result.height)

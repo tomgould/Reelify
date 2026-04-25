@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 import subprocess
 import tempfile
@@ -73,6 +74,7 @@ def encode(
     fps: float,
     width: int,
     height: int,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> None:
     active_segments = [seg for seg in segments if seg.speed != 0.0]
     if not active_segments:
@@ -102,6 +104,8 @@ def encode(
                     f"FFmpeg segment encoding failed: {result.stderr.decode('utf-8', errors='replace')}"
                 )
             segment_files.append(segment_file)
+            if progress_callback:
+                progress_callback(idx + 1, len(active_segments))
 
         concat_list = tmp_path / "concat_list.txt"
         with concat_list.open("w") as f:
