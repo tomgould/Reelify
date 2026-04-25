@@ -10,6 +10,7 @@ _PROMPT = (
 
 _BASE_URL = "http://localhost:1234/v1"
 _API_KEY = "lm-studio"
+_MODEL = "qwen/qwen2.5-vl-7b"
 
 try:
     import openai as _openai_module
@@ -50,7 +51,7 @@ class LocalVisionProvider(VisionProvider):
         try:
             client = openai.OpenAI(base_url=_BASE_URL, api_key=_API_KEY)
             response = client.chat.completions.create(
-                model="local-model",
+                model=_MODEL,
                 messages=[
                     {
                         "role": "user",
