@@ -76,67 +76,81 @@ def test_local_provider_name() -> None:
     assert provider.name == "local"
 
 
+def _make_mock_pil() -> MagicMock:
+    mock_img = MagicMock()
+    mock_img.size = (1920, 1080)
+    mock_img.convert.return_value = mock_img
+    mock_img.resize.return_value = mock_img
+    mock_img.save = MagicMock()
+    mock_pil = MagicMock()
+    mock_pil.open.return_value = mock_img
+    mock_pil.LANCZOS = 1
+    return mock_pil
+
+
+def _mock_requests_success(content: str) -> MagicMock:
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"choices": [{"message": {"content": content}}]}
+    mock_resp.raise_for_status = MagicMock()
+    mock_requests = MagicMock()
+    mock_requests.post.return_value = mock_resp
+    mock_requests.exceptions.ConnectionError = ConnectionError
+    mock_requests.exceptions.Timeout = TimeoutError
+    return mock_requests
+
+
 def test_local_describe_frame_returns_string(tmp_path: Path) -> None:
     img = tmp_path / "frame.jpg"
     img.write_bytes(b"\xff\xd8\xff\xd9")
 
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "User is typing in a terminal."
-
-    mock_openai = MagicMock()
-    mock_client = MagicMock()
-    mock_openai.OpenAI.return_value = mock_client
-    mock_client.chat.completions.create.return_value = mock_response
-
-    with patch("reelify.vision.local._openai_module", mock_openai):
+    mock_requests = _mock_requests_success("User is typing in a terminal.")
+    with patch("reelify.vision.local._requests_module", mock_requests), \
+         patch("reelify.vision.local._Image_module", _make_mock_pil()):
         provider = LocalVisionProvider()
         result = provider.describe_frame(img)
 
     assert result == "User is typing in a terminal."
 
 
-def test_local_describe_frame_raises_on_connection_refused(tmp_path: Path) -> None:
+def test_local_describe_frame_raises_on_connection_error(tmp_path: Path) -> None:
     img = tmp_path / "frame.jpg"
     img.write_bytes(b"\xff\xd8\xff\xd9")
 
-    mock_openai = MagicMock()
-    mock_client = MagicMock()
-    mock_openai.OpenAI.return_value = mock_client
-    mock_client.chat.completions.create.side_effect = ConnectionRefusedError()
+    mock_requests = MagicMock()
+    mock_requests.exceptions.ConnectionError = ConnectionError
+    mock_requests.exceptions.Timeout = TimeoutError
+    mock_requests.post.side_effect = ConnectionError("refused")
 
-    with patch("reelify.vision.local._openai_module", mock_openai):
+    with patch("reelify.vision.local._requests_module", mock_requests), \
+         patch("reelify.vision.local._Image_module", _make_mock_pil()):
         provider = LocalVisionProvider()
-        with pytest.raises(ProviderUnavailableError):
+        with pytest.raises(ProviderUnavailableError, match="not reachable"):
             provider.describe_frame(img)
 
 
-def test_local_raises_on_api_connection_error(tmp_path: Path) -> None:
+def test_local_raises_on_timeout(tmp_path: Path) -> None:
     img = tmp_path / "frame.jpg"
     img.write_bytes(b"\xff\xd8\xff\xd9")
 
-    class _APIConnectionError(Exception):
-        pass
-    _APIConnectionError.__name__ = "APIConnectionError"
+    mock_requests = MagicMock()
+    mock_requests.exceptions.ConnectionError = ConnectionError
+    mock_requests.exceptions.Timeout = TimeoutError
+    mock_requests.post.side_effect = TimeoutError("timed out")
 
-    mock_openai = MagicMock()
-    mock_client = MagicMock()
-    mock_openai.OpenAI.return_value = mock_client
-    mock_client.chat.completions.create.side_effect = _APIConnectionError("fail")
-
-    with patch("reelify.vision.local._openai_module", mock_openai):
+    with patch("reelify.vision.local._requests_module", mock_requests), \
+         patch("reelify.vision.local._Image_module", _make_mock_pil()):
         provider = LocalVisionProvider()
-        with pytest.raises(ProviderUnavailableError):
+        with pytest.raises(ProviderUnavailableError, match="timed out"):
             provider.describe_frame(img)
 
 
-def test_local_raises_when_openai_not_installed(tmp_path: Path) -> None:
+def test_local_raises_when_requests_not_installed(tmp_path: Path) -> None:
     img = tmp_path / "frame.jpg"
     img.write_bytes(b"\xff\xd8\xff\xd9")
 
-    with patch("reelify.vision.local._openai_module", None):
+    with patch("reelify.vision.local._requests_module", None):
         provider = LocalVisionProvider()
-        with pytest.raises(ProviderUnavailableError, match="openai package"):
+        with pytest.raises(ProviderUnavailableError, match="requests package"):
             provider.describe_frame(img)
 
 

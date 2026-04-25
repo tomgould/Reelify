@@ -1,4 +1,6 @@
 import base64
+import io
+import json
 from pathlib import Path
 
 from reelify.vision.provider import VisionProvider, ProviderUnavailableError
@@ -9,18 +11,35 @@ _PROMPT = (
 )
 
 _BASE_URL = "http://localhost:1234/v1"
-_API_KEY = "lm-studio"
 _MODEL = "qwen/qwen2.5-vl-7b"
+_MAX_PX = 1280  # resize longest edge to this before sending
 
 try:
-    import openai as _openai_module
+    import requests as _requests_module
 except ImportError:
-    _openai_module = None  # type: ignore[assignment]
+    _requests_module = None  # type: ignore[assignment]
 
 try:
-    import httpx as _httpx_module
+    from PIL import Image as _Image_module
 except ImportError:
-    _httpx_module = None  # type: ignore[assignment]
+    _Image_module = None  # type: ignore[assignment]
+
+
+def _encode_image(image_path: Path) -> str:
+    """Return base64 JPEG data URL, resized to _MAX_PX on the longest edge."""
+    if _Image_module is None:
+        # Fallback: send raw bytes without resize
+        return "data:image/jpeg;base64," + base64.b64encode(image_path.read_bytes()).decode()
+
+    img = _Image_module.open(image_path).convert("RGB")
+    w, h = img.size
+    if max(w, h) > _MAX_PX:
+        scale = _MAX_PX / max(w, h)
+        img = img.resize((int(w * scale), int(h * scale)), _Image_module.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
 class LocalVisionProvider(VisionProvider):
@@ -33,55 +52,48 @@ class LocalVisionProvider(VisionProvider):
     def describe_frame(self, image_path: Path) -> str:
         """Send *image_path* to LM Studio and return a one-sentence description.
 
+        Uses requests directly (more compatible with LM Studio than openai SDK).
+
         Raises:
             ProviderUnavailableError: if LM Studio is not reachable.
         """
-        # Use module-level import (may be None if package absent)
-        openai = _openai_module
-        if openai is None:
+        if _requests_module is None:
             raise ProviderUnavailableError(
-                "openai package is required for LocalVisionProvider"
+                "requests package is required for LocalVisionProvider"
             )
 
-        image_data = base64.b64encode(image_path.read_bytes()).decode("utf-8")
-        suffix = image_path.suffix.lower().lstrip(".")
-        mime = f"image/{suffix if suffix in ('png', 'gif', 'webp') else 'jpeg'}"
-        data_url = f"data:{mime};base64,{image_data}"
+        data_url = _encode_image(image_path)
+
+        payload = {
+            "model": _MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": _PROMPT},
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ],
+                }
+            ],
+            "max_tokens": 128,
+        }
 
         try:
-            client = openai.OpenAI(base_url=_BASE_URL, api_key=_API_KEY)
-            response = client.chat.completions.create(
-                model=_MODEL,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": _PROMPT},
-                            {"type": "image_url", "image_url": {"url": data_url}},
-                        ],
-                    }
-                ],
-                max_tokens=128,
+            resp = _requests_module.post(
+                f"{_BASE_URL}/chat/completions",
+                headers={"Content-Type": "application/json"},
+                data=json.dumps(payload),
+                timeout=60,
             )
-            return response.choices[0].message.content or ""
-        except ConnectionRefusedError as exc:
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"] or ""
+        except _requests_module.exceptions.ConnectionError as exc:
             raise ProviderUnavailableError(
-                f"LM Studio connection refused at {_BASE_URL}"
+                f"LM Studio not reachable at {_BASE_URL}"
             ) from exc
+        except _requests_module.exceptions.Timeout as exc:
+            raise ProviderUnavailableError("LM Studio request timed out") from exc
         except Exception as exc:
-            httpx = _httpx_module
-            if httpx is not None and isinstance(exc, httpx.ConnectError):
-                raise ProviderUnavailableError(
-                    f"LM Studio not reachable: {exc}"
-                ) from exc
-            exc_type = type(exc).__name__
-            if exc_type in (
-                "ConnectError",
-                "APIConnectionError",
-                "APIStatusError",
-                "AuthenticationError",
-            ):
-                raise ProviderUnavailableError(
-                    f"LM Studio provider error ({exc_type}): {exc}"
-                ) from exc
-            raise
+            raise ProviderUnavailableError(
+                f"LM Studio request failed: {exc}"
+            ) from exc

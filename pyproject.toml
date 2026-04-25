@@ -23,7 +23,7 @@ dependencies = [
     "scenedetect[opencv]",
     "typer[all]",
     "ffmpeg-python",
-    "openai>=1.0",
+    "requests>=2.28",
     "google-genai>=1.0",
     "Pillow>=10.0",
 ]
