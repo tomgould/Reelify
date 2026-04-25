@@ -29,7 +29,7 @@ Tasks ordered by priority. Each has loop mode, files, plan, and acceptance crite
   1. Replace `tempfile.mktemp()` with `tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)`.
   2. Close the temporary file immediately, then use `.name` as the path for ffmpeg.
 - **Acceptance:** No use of `mktemp()` remains in `_dedup_video()`; the temporary file is created atomically before ffmpeg writes to it.
-- **Status:** [ ] todo
+- **Status:** [x] done
 
 ### [LOOP: Micro] Bug: `encoder.py` frame-seek accuracy (#3)
 - **Files:** `src/reelify/encoder.py`
@@ -37,7 +37,7 @@ Tasks ordered by priority. Each has loop mode, files, plan, and acceptance crite
   1. In `_build_segment_command()`, move `-ss` and `-t` to after `-i` (input seeking → accurate but slower).
   2. Add a comment explaining the trade-off (fast seek before `-i` can land on non-keyframes vs accurate seek after `-i`).
 - **Acceptance:** `-ss` and `-t` appear after `-i` in the generated ffmpeg command, and segments start on the correct frame without grey/corrupt first frames.
-- **Status:** [ ] todo
+- **Status:** [x] done
 
 ### [LOOP: Mini] Perf: `classifier.py` O(n²) margin-padding (#2)
 - **Files:** `src/reelify/classifier.py`, `tests/test_classifier.py`

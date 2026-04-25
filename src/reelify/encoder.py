@@ -40,8 +40,9 @@ def _build_segment_command(
     cmd = [
         "ffmpeg",
         "-y",
-        "-ss", str(start_time),
         "-i", str(input_path),
+        # Accurate (post-input) seek — slower than pre-input but avoids corrupt first frames.
+        "-ss", str(start_time),
         "-t", str(duration),
     ]
 

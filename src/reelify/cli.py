@@ -35,7 +35,9 @@ def _dedup_video(input_path: Path, similarity: float = 0.98, frametime: float = 
     frametime > 0 holds each unique frame for that many seconds in the output.
     """
     threshold = round(1.0 - similarity, 4)
-    tmp = Path(tempfile.mktemp(suffix=".mp4"))
+    ntf = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    ntf.close()
+    tmp = Path(ntf.name)
 
     if frametime > 0:
         # Space selected frames frametime seconds apart; output at matching fps
