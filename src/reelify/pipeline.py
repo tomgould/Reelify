@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, asdict
 from pathlib import Path
 
 from reelify.analyser import analyse
@@ -14,6 +15,10 @@ class ReelifyConfig:
     idle_threshold: float
     keyframes: bool
     subtitles: bool
+    enrichment: bool = False
+    metadata: bool = False
+    scoring: str = "fast"
+    provider: str = "auto"
 
 
 def run(input_path: Path, output_path: Path, config: ReelifyConfig) -> None:
@@ -21,6 +26,20 @@ def run(input_path: Path, output_path: Path, config: ReelifyConfig) -> None:
     chunks = classify(result, config.idle_threshold)
     segments = build_speed_map(chunks, result, float(config.max_duration))
     encode(input_path, output_path, segments, result.fps, result.width, result.height)
-    if config.keyframes:
+
+    keyframe_paths: list[Path] = []
+    if config.keyframes or config.enrichment:
         keyframe_dir = output_path.parent / f"{output_path.stem}_keyframes"
-        extract_keyframes(input_path, keyframe_dir)
+        keyframe_paths = extract_keyframes(input_path, keyframe_dir)
+
+    if config.enrichment:
+        from reelify.vision.provider import get_provider
+        from reelify.enricher import enrich
+        vision = get_provider(config.provider)
+        enrichment_result = enrich(
+            input_path, keyframe_paths, chunks, result, vision, config.scoring
+        )
+        if config.metadata:
+            meta_path = output_path.with_suffix(".json")
+            meta_dict = asdict(enrichment_result.metadata)
+            meta_path.write_text(json.dumps(meta_dict, indent=2))

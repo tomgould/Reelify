@@ -52,15 +52,20 @@ Stage 5 (optional): Keyframe Extraction
 ---------------------------------------
 When `--keyframes` is passed, PySceneDetect runs `ContentDetector` (and optionally `AdaptiveDetector`) over the original video to locate scene boundaries. One representative frame from each scene is saved as a JPEG in an adjacent folder named `{input_stem}_keyframes/`.
 
+Supported Formats
+-----------------
+- **Input**: MP4, MKV, WebM (any container OpenCV/FFmpeg can decode)
+- **Output**: always MP4 (`libx264`), regardless of input container
+
 CLI Interface
 -------------
 Built with Typer:
 
-    reelify input.mp4 [--output summary.mp4] [--max-duration 120] \
-                      [--idle-threshold 0.02] [--keyframes] [--subtitles]
+    reelify input.webm [--output summary.mp4] [--max-duration 120] \
+                       [--idle-threshold 0.02] [--keyframes] [--subtitles]
 
 Parameters:
-- `input_path` — source video (required)
+- `input_path` — source video (required; MP4, MKV, WebM)
 - `--output` — destination path; defaults to `{input_stem}_summary.mp4`
 - `--max-duration` — target output length in seconds
 - `--idle-threshold` — motion threshold (0–1)

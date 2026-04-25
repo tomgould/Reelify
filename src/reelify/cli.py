@@ -1,3 +1,5 @@
+import json
+from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
@@ -32,3 +34,67 @@ def process(
     typer.echo(f"Config:  max_duration={config.max_duration}, idle_threshold={config.idle_threshold}, keyframes={config.keyframes}, subtitles={config.subtitles}")
 
     run(input_path, output, config)
+
+
+@app.command()
+def analyse(
+    input_path: Path = typer.Argument(..., exists=True, readable=True, help="Path to the input video file."),
+    provider: str = typer.Option("auto", help="Vision provider: local | api | auto."),
+    scoring: str = typer.Option("fast", help="Scoring mode: fast | deep."),
+    output: Optional[Path] = typer.Option(None, help="Output JSON path. Defaults to <input_stem>_analysis.json."),
+) -> None:
+    """Analyse a screen recording with LLM vision enrichment and write JSON metadata."""
+    from reelify.analyser import analyse as run_analyse
+    from reelify.classifier import classify
+    from reelify.keyframes import extract_keyframes
+    from reelify.enricher import enrich
+    from reelify.vision.provider import get_provider
+
+    if output is None:
+        output = input_path.parent / f"{input_path.stem}_analysis.json"
+
+    typer.echo(f"Analysing {input_path} …")
+
+    result = run_analyse(input_path)
+    typer.echo("  Step 1/4: Reading video frames …")
+
+    chunks = classify(result, idle_threshold=0.02)
+    typer.echo(f"  Step 2/4: Classifying segments … ({len(chunks)} segments found)")
+
+    keyframe_dir = input_path.parent / f"{input_path.stem}_keyframes"
+    keyframe_paths = extract_keyframes(input_path, keyframe_dir)
+    typer.echo(f"  Step 3/4: Extracting keyframes … ({len(keyframe_paths)} keyframes)")
+
+    vision = get_provider(provider)
+    typer.echo(f"  Step 4/4: Enriching with vision (provider={provider}, scoring={scoring}) …")
+    enrichment_result = enrich(
+        input_path,
+        keyframe_paths,
+        chunks,
+        result,
+        vision,
+        scoring,
+        progress_callback=lambda i, n: typer.echo(f"    Captioning keyframe {i}/{n} …"),
+    )
+
+    meta_dict = asdict(enrichment_result.metadata)
+    output.write_text(json.dumps(meta_dict, indent=2))
+
+    duration = enrichment_result.metadata.duration_secs
+    seg_count = len(enrichment_result.metadata.segments)
+    typer.echo(f"Duration:  {duration:.1f}s")
+    typer.echo(f"Segments:  {seg_count}")
+
+    # Top 3 captions by score
+    scored = sorted(
+        zip(enrichment_result.scores, enrichment_result.captions),
+        key=lambda x: x[0],
+        reverse=True,
+    )
+    typer.echo("Top captions:")
+    for score, caption in scored[:3]:
+        if caption:
+            typer.echo(f"  [{score:.2f}] {caption}")
+
+    typer.echo(f"Written to {output}")
+    typer.echo("Done.")

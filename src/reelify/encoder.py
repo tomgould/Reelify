@@ -5,6 +5,15 @@ import tempfile
 from reelify.speed_map import Segment
 
 
+def _has_audio(input_path: Path) -> bool:
+    result = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-select_streams", "a:0",
+         "-show_entries", "stream=codec_type", "-of", "default=nw=1:nk=1", str(input_path)],
+        capture_output=True, check=False,
+    )
+    return result.returncode == 0 and result.stdout.strip() != b""
+
+
 def _atempo_chain(speed: float) -> str:
     filters: list[str] = []
     remaining = speed
@@ -22,6 +31,7 @@ def _build_segment_command(
     end_frame: int,
     speed: float,
     fps: float,
+    audio: bool,
 ) -> list[str]:
     start_time = start_frame / fps
     duration = (end_frame - start_frame) / fps
@@ -34,19 +44,25 @@ def _build_segment_command(
         "-t", str(duration),
     ]
 
-    if speed != 1.0:
-        cmd.extend(["-vf", f"setpts=PTS/{speed}"])
-        cmd.extend(["-af", _atempo_chain(speed)])
+    # Pad odd dimensions to even — libx264 requires width/height divisible by 2
+    scale_filter = "scale=trunc(iw/2)*2:trunc(ih/2)*2"
 
-    cmd.extend([
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-pix_fmt", "yuv420p",
-        str(output_path),
-    ])
+    if speed != 1.0:
+        vf = f"setpts=PTS/{speed},{scale_filter}"
+        cmd.extend(["-vf", vf])
+        if audio:
+            cmd.extend(["-af", _atempo_chain(speed)])
+    else:
+        cmd.extend(["-vf", scale_filter])
+
+    cmd.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p"])
+
+    if audio:
+        cmd.extend(["-c:a", "aac", "-b:a", "128k"])
+    else:
+        cmd.extend(["-an"])
+
+    cmd.append(str(output_path))
     return cmd
 
 
@@ -63,6 +79,7 @@ def encode(
         raise ValueError("No active segments to encode")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    audio = _has_audio(input_path)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
@@ -77,6 +94,7 @@ def encode(
                 seg.end_frame,
                 seg.speed,
                 fps,
+                audio,
             )
             result = subprocess.run(cmd, capture_output=True, check=False)
             if result.returncode != 0:
