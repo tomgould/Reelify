@@ -27,27 +27,34 @@ from reelify.vision.local import LocalVisionProvider  # noqa: E402
 from reelify.vision.gemini import GeminiVisionProvider  # noqa: E402
 
 
-def get_provider(prefer: str = "auto") -> VisionProvider:
+def get_provider(prefer: str = "local") -> VisionProvider:
     """Return a :class:`VisionProvider` according to *prefer*.
 
     Args:
-        prefer: ``'local'`` → LM Studio only; ``'api'`` → Gemini only;
-            ``'auto'`` → try local first, fall back to API silently.
+        prefer: ``'local'`` → LM Studio only (default); ``'api'`` → Gemini
+            (requires REELIFY_PRO=1); ``'auto'`` → local first, fall back to
+            Gemini if unavailable (requires REELIFY_PRO=1 for fallback).
 
     Raises:
-        ProviderUnavailableError: if the requested provider (or all providers
-            when ``prefer='auto'``) cannot be initialised.
+        ProviderUnavailableError: if the requested provider cannot be reached.
     """
+    import os
+    pro = os.environ.get("REELIFY_PRO", "0") == "1"
+
+    if prefer == "api":
+        if not pro:
+            raise ProviderUnavailableError(
+                "API providers require REELIFY_PRO=1"
+            )
+        return GeminiVisionProvider()
+
     if prefer == "local":
         return LocalVisionProvider()
 
-    if prefer == "api":
-        return GeminiVisionProvider()
-
-    # auto: try local first, fall back to Gemini
+    # auto: always try local; only fall back to API if PRO enabled
     try:
         return LocalVisionProvider()
     except ProviderUnavailableError:
-        pass
-
-    return GeminiVisionProvider()
+        if pro:
+            return GeminiVisionProvider()
+        raise

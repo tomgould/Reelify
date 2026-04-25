@@ -24,9 +24,16 @@ def test_get_provider_local_returns_local_provider() -> None:
     assert isinstance(provider, LocalVisionProvider)
 
 
-def test_get_provider_api_returns_gemini_provider() -> None:
+def test_get_provider_api_returns_gemini_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("REELIFY_PRO", "1")
     provider = get_provider("api")
     assert isinstance(provider, GeminiVisionProvider)
+
+
+def test_get_provider_api_raises_without_pro(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("REELIFY_PRO", raising=False)
+    with pytest.raises(ProviderUnavailableError, match="REELIFY_PRO"):
+        get_provider("api")
 
 
 def test_get_provider_auto_returns_local_when_available() -> None:
@@ -37,7 +44,10 @@ def test_get_provider_auto_returns_local_when_available() -> None:
         assert provider is mock_instance
 
 
-def test_get_provider_auto_falls_back_to_gemini_when_local_unavailable() -> None:
+def test_get_provider_auto_falls_back_to_gemini_when_local_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("REELIFY_PRO", "1")
     with patch("reelify.vision.provider.LocalVisionProvider") as MockLocal, \
          patch("reelify.vision.provider.GeminiVisionProvider") as MockGemini:
         MockLocal.side_effect = ProviderUnavailableError("LM Studio down")
@@ -45,6 +55,16 @@ def test_get_provider_auto_falls_back_to_gemini_when_local_unavailable() -> None
         MockGemini.return_value = mock_gemini
         provider = get_provider("auto")
         assert provider is mock_gemini
+
+
+def test_get_provider_auto_raises_without_pro_when_local_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("REELIFY_PRO", raising=False)
+    with patch("reelify.vision.provider.LocalVisionProvider") as MockLocal:
+        MockLocal.side_effect = ProviderUnavailableError("LM Studio down")
+        with pytest.raises(ProviderUnavailableError):
+            get_provider("auto")
 
 
 # ---------------------------------------------------------------------------

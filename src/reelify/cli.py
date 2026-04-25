@@ -39,7 +39,7 @@ def process(
 @app.command()
 def analyse(
     input_path: Path = typer.Argument(..., exists=True, readable=True, help="Path to the input video file."),
-    provider: str = typer.Option("auto", help="Vision provider: local | api | auto."),
+    provider: str = typer.Option("local", help="Vision provider: local (default) | api (requires REELIFY_PRO=1) | auto."),
     scoring: str = typer.Option("fast", help="Scoring mode: fast | deep."),
     output: Optional[Path] = typer.Option(None, help="Output JSON path. Defaults to <input_stem>_analysis.json."),
 ) -> None:
