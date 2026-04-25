@@ -1,4 +1,5 @@
 import json
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -33,6 +34,18 @@ def run(
     chunks = classify(result, config.idle_threshold)
     segments = build_speed_map(chunks, result, float(config.max_duration))
     encode(input_path, output_path, segments, result.fps, result.width, result.height)
+
+    if config.subtitles:
+        from reelify.subtitles import extract_audio, transcribe, write_srt, burn_subtitles
+        print("  Transcribing audio (Whisper)…")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wav_path = Path(tmpdir) / "audio.wav"
+            extract_audio(input_path, wav_path)
+            segments = transcribe(wav_path)
+            srt_path = output_path.with_suffix(".srt")
+            write_srt(segments, srt_path)
+            print("  Burning subtitles…")
+            burn_subtitles(output_path, srt_path, output_path)
 
     keyframe_paths: list[Path] = []
     if config.keyframes or config.enrichment:

@@ -1,4 +1,5 @@
 import json
+import tempfile
 from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
@@ -69,6 +70,18 @@ def process(
         progress_callback=_encode_progress,
     )
 
+    if config.subtitles:
+        from reelify.subtitles import extract_audio, transcribe, write_srt, burn_subtitles
+        typer.echo("  Step 5: Transcribing audio (Whisper)…")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wav_path = Path(tmpdir) / "audio.wav"
+            extract_audio(input_path, wav_path)
+            sub_segments = transcribe(wav_path)
+            srt_path = output.with_suffix(".srt")
+            write_srt(sub_segments, srt_path)
+            typer.echo("  Step 6: Burning subtitles…")
+            burn_subtitles(output, srt_path, output)
+
     keyframe_paths: list[Path] = []
     if config.keyframes or config.enrichment:
         keyframe_dir = output.parent / f"{output.stem}_keyframes"
@@ -78,7 +91,7 @@ def process(
         from reelify.vision.provider import get_provider
         from reelify.enricher import enrich
         vision = get_provider(config.provider)
-        typer.echo(f"  Step 5: Enriching with vision (provider={config.provider}, scoring={config.scoring}) …")
+        typer.echo(f"  Step 7: Enriching with vision (provider={config.provider}, scoring={config.scoring}) …")
         enrichment_result = enrich(
             input_path,
             keyframe_paths,
