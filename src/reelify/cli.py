@@ -1,4 +1,5 @@
 import json
+import subprocess
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -6,7 +7,7 @@ from typing import Optional
 
 import typer
 
-from reelify.analyser import analyse
+from reelify.analyser import analyse as _analyse
 from reelify.classifier import classify
 from reelify.encoder import encode
 from reelify.keyframes import extract_keyframes
@@ -16,20 +17,90 @@ from reelify.speed_map import build_speed_map
 app = typer.Typer(help="Turn long screen recordings into concise summary videos.")
 
 
+_PRESETS: dict[str, dict] = {
+    "cli": dict(
+        dedup=True,
+        dedup_similarity=0.95,
+        frametime=3.0,
+        idle_threshold=0.005,
+        keyframes=True,
+        max_duration=0,
+    ),
+}
+
+
+def _dedup_video(input_path: Path, similarity: float = 0.98, frametime: float = 0.0) -> Path:
+    """Return a temp file with near-duplicate frames removed via ffmpeg scene filter.
+
+    frametime > 0 holds each unique frame for that many seconds in the output.
+    """
+    threshold = round(1.0 - similarity, 4)
+    tmp = Path(tempfile.mktemp(suffix=".mp4"))
+
+    if frametime > 0:
+        # Space selected frames frametime seconds apart; output at matching fps
+        out_fps = round(1.0 / frametime, 6)
+        vf = (
+            f"select='gt(scene,{threshold})',"
+            f"setpts=N*{frametime}/TB,"
+            f"scale=trunc(iw/2)*2:trunc(ih/2)*2"
+        )
+        extra = ["-r", str(out_fps)]
+    else:
+        vf = (
+            f"select='gt(scene,{threshold})',"
+            f"setpts=N/FRAME_RATE/TB,"
+            f"scale=trunc(iw/2)*2:trunc(ih/2)*2"
+        )
+        extra = ["-vsync", "vfr"]
+
+    cmd = [
+        "ffmpeg", "-y", "-i", str(input_path),
+        "-vf", vf,
+        *extra,
+        "-c:v", "libx264", "-preset", "ultrafast",
+        "-c:a", "copy",
+        str(tmp),
+    ]
+    result = subprocess.run(cmd, capture_output=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg dedup failed:\n{result.stderr.decode()}")
+    return tmp
+
+
 @app.command()
 def process(
     input_path: Path = typer.Argument(..., exists=True, readable=True, help="Path to the input video file."),
     output: Optional[Path] = typer.Option(None, help="Output video path. Defaults to <input_stem>_summary.mp4."),
-    max_duration: int = typer.Option(120, help="Target output duration in seconds."),
+    max_duration: int = typer.Option(0, help="Target output duration in seconds. 0 = no limit."),
     idle_threshold: float = typer.Option(0.02, help="Motion threshold (0-1) for classifying idle frames."),
-    keyframes: bool = typer.Option(False, help="Extract representative keyframes from scene changes."),
+    keyframes: bool = typer.Option(True, help="Extract representative keyframes from scene changes."),
     subtitles: bool = typer.Option(False, help="Burn in subtitles (Phase 2)."),
+    dedup: bool = typer.Option(True, "--dedup/--no-dedup", help="Drop near-duplicate frames before analysis (default: on)."),
+    dedup_similarity: float = typer.Option(0.90, "--dedup-similarity", help="Similarity threshold for --dedup (0–1, default 0.90)."),
+    frametime: float = typer.Option(0.0, "--frametime", help="Hold each unique deduped frame for N seconds. 0 = keep original timing."),
+    preset: Optional[str] = typer.Option(None, "--preset", help=f"Apply a named preset. Available: {', '.join(_PRESETS)}."),
 ) -> None:
+    if preset is not None:
+        if preset not in _PRESETS:
+            typer.echo(f"Unknown preset '{preset}'. Available: {', '.join(_PRESETS)}", err=True)
+            raise typer.Exit(1)
+        p = _PRESETS[preset]
+        dedup = p.get("dedup", dedup)
+        dedup_similarity = p.get("dedup_similarity", dedup_similarity)
+        frametime = p.get("frametime", frametime)
+        idle_threshold = p.get("idle_threshold", idle_threshold)
+        keyframes = p.get("keyframes", keyframes)
+        if max_duration == 0:
+            max_duration = p.get("max_duration", max_duration)
+
     if output is None:
         output = input_path.parent / f"{input_path.stem}_summary.mp4"
 
+    effective_max = max_duration if max_duration > 0 else 86400
+
     config = ReelifyConfig(
-        max_duration=max_duration,
+        max_duration=effective_max,
         idle_threshold=idle_threshold,
         keyframes=keyframes,
         subtitles=subtitles,
@@ -37,7 +108,17 @@ def process(
 
     typer.echo(f"Input:   {input_path}")
     typer.echo(f"Output:  {output}")
-    typer.echo(f"Config:  max_duration={config.max_duration}, idle_threshold={config.idle_threshold}, keyframes={config.keyframes}, subtitles={config.subtitles}")
+    max_label = f"{max_duration}s" if max_duration > 0 else "unlimited"
+    typer.echo(f"Config:  max_duration={max_label}, idle_threshold={config.idle_threshold}, keyframes={config.keyframes}, subtitles={config.subtitles}")
+
+    analyse_path = input_path
+    dedup_tmp: Optional[Path] = None
+    if dedup:
+        ft_label = f", frametime={frametime}s" if frametime > 0 else ""
+        typer.echo(f"  Step 0: Deduplicating frames (similarity≥{dedup_similarity:.0%}{ft_label})…")
+        dedup_tmp = _dedup_video(input_path, dedup_similarity, frametime)
+        analyse_path = dedup_tmp
+        typer.echo(f"    → {dedup_tmp}")
 
     typer.echo("  Step 1: Analysing frames…")
 
@@ -46,7 +127,7 @@ def process(
             pct = int((sampled / total) * 100)
             typer.echo(f"\r    {pct}%", nl=False)
 
-    result = analyse(input_path, progress_callback=_analysis_progress)
+    result = _analyse(analyse_path, progress_callback=_analysis_progress)
     typer.echo()
 
     typer.echo("  Step 2: Classifying segments…")
@@ -61,7 +142,7 @@ def process(
         typer.echo(f"  Encoding segment {idx}/{total}…")
 
     encode(
-        input_path,
+        analyse_path,
         output,
         segments,
         result.fps,
@@ -75,7 +156,7 @@ def process(
         typer.echo("  Step 5: Transcribing audio (Whisper)…")
         with tempfile.TemporaryDirectory() as tmpdir:
             wav_path = Path(tmpdir) / "audio.wav"
-            extract_audio(input_path, wav_path)
+            extract_audio(analyse_path, wav_path)
             sub_segments = transcribe(wav_path)
             srt_path = output.with_suffix(".srt")
             write_srt(sub_segments, srt_path)
@@ -85,7 +166,7 @@ def process(
     keyframe_paths: list[Path] = []
     if config.keyframes or config.enrichment:
         keyframe_dir = output.parent / f"{output.stem}_keyframes"
-        keyframe_paths = extract_keyframes(input_path, keyframe_dir)
+        keyframe_paths = extract_keyframes(analyse_path, keyframe_dir)
 
     if config.enrichment:
         from reelify.vision.provider import get_provider
@@ -93,7 +174,7 @@ def process(
         vision = get_provider(config.provider)
         typer.echo(f"  Step 7: Enriching with vision (provider={config.provider}, scoring={config.scoring}) …")
         enrichment_result = enrich(
-            input_path,
+            analyse_path,
             keyframe_paths,
             chunks,
             result,
@@ -104,6 +185,9 @@ def process(
             meta_path = output.with_suffix(".json")
             meta_dict = asdict(enrichment_result.metadata)
             meta_path.write_text(json.dumps(meta_dict, indent=2))
+
+    if dedup_tmp and dedup_tmp.exists():
+        dedup_tmp.unlink()
 
     typer.echo("Done.")
 

@@ -3,7 +3,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 
@@ -17,24 +16,38 @@ class AnalysisResult:
     height: int
 
 
-def _probe_duration(video_path: Path) -> float:
+def _probe(video_path: Path) -> tuple[float, float, int, int]:
+    """Return (duration, fps, width, height) via ffprobe."""
     result = subprocess.run(
         [
-            "ffprobe",
-            "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "default=nw=1:nk=1",
+            "ffprobe", "-v", "quiet",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height,r_frame_rate:format=duration",
+            "-of", "csv=p=0",
             str(video_path),
         ],
         capture_output=True,
         text=True,
+        check=True,
     )
-    if result.returncode != 0:
-        raise ValueError(f"ffprobe failed for {video_path}")
-    duration = float(result.stdout.strip())
-    if duration <= 0:
-        raise ValueError(f"ffprobe returned invalid duration for {video_path}")
-    return duration
+    lines = [l.strip() for l in result.stdout.strip().splitlines() if l.strip()]
+    width = height = fps_val = duration = 0.0
+    for line in lines:
+        parts = line.split(",")
+        if len(parts) == 3:
+            # stream line: width,height,r_frame_rate
+            width, height = int(parts[0]), int(parts[1])
+            num, den = parts[2].split("/")
+            fps_val = float(num) / float(den)
+        elif len(parts) == 1:
+            try:
+                duration = float(parts[0])
+            except ValueError:
+                pass
+    return duration, fps_val, int(width), int(height)
+
+
+_THUMB_WIDTH = 320
 
 
 def analyse(
@@ -42,60 +55,50 @@ def analyse(
     sample_every: int = 4,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> AnalysisResult:
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise ValueError(f"Cannot open video: {video_path}")
+    duration, native_fps, width, height = _probe(video_path)
+    if native_fps <= 0:
+        native_fps = 30.0
 
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    thumb_height = int(height * _THUMB_WIDTH / width) if width > 0 else _THUMB_WIDTH
+    sample_fps = native_fps / sample_every
+    estimated_samples = max(1, int(duration * sample_fps))
 
-    estimated_total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    has_estimated_total = estimated_total > 0
-    estimated_samples = int(estimated_total / sample_every) if has_estimated_total else 0
+    # Use ffmpeg to decode only the sampled frames at thumbnail resolution.
+    # This avoids reading every intermediate frame entirely.
+    cmd = [
+        "ffmpeg", "-i", str(video_path),
+        "-vf", f"fps={sample_fps},scale={_THUMB_WIDTH}:{thumb_height}",
+        "-f", "rawvideo", "-pix_fmt", "gray",
+        "-",
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    assert proc.stdout is not None
 
+    frame_bytes = _THUMB_WIDTH * thumb_height
     scores: list[float] = []
     prev_gray: np.ndarray | None = None
-    frame_index = 0
-    actual_frame_count = 0
-    sampled_so_far = 0
+    sampled = 0
 
     while True:
-        if frame_index % sample_every != 0:
-            ret = cap.grab()
-            if not ret:
-                break
-            frame_index += 1
-            actual_frame_count += 1
-            continue
-
-        ret, frame = cap.read()
-        if not ret:
+        raw = proc.stdout.read(frame_bytes)
+        if len(raw) < frame_bytes:
             break
-
-        actual_frame_count += 1
-
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = np.frombuffer(raw, dtype=np.uint8).reshape((thumb_height, _THUMB_WIDTH))
         if prev_gray is None:
             scores.append(0.0)
         else:
             mad = np.mean(np.abs(gray.astype(np.float32) - prev_gray.astype(np.float32)))
             scores.append(mad / 255.0)
         prev_gray = gray
-        frame_index += 1
-        sampled_so_far += 1
+        sampled += 1
+        if progress_callback and sampled % 10 == 0:
+            progress_callback(sampled, estimated_samples)
 
-        if progress_callback and sampled_so_far % 50 == 0 and has_estimated_total:
-            progress_callback(sampled_so_far, estimated_samples)
+    proc.stdout.close()
+    proc.wait()
 
-    cap.release()
-
-    try:
-        duration = _probe_duration(video_path)
-        fps = actual_frame_count / duration
-        total_frames = actual_frame_count
-    except Exception:
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    total_frames = int(sampled * sample_every)
+    fps = native_fps
 
     return AnalysisResult(
         scores=scores,
