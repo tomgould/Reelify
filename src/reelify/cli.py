@@ -76,6 +76,7 @@ def process(
     idle_threshold: float = typer.Option(0.02, help="Motion threshold (0-1) for classifying idle frames."),
     keyframes: bool = typer.Option(True, help="Extract representative keyframes from scene changes."),
     subtitles: bool = typer.Option(False, help="Burn in subtitles (Phase 2)."),
+    enrichment: bool = typer.Option(False, "--enrichment/--no-enrichment", help="Enable LLM vision enrichment."),
     dedup: bool = typer.Option(True, "--dedup/--no-dedup", help="Drop near-duplicate frames before analysis (default: on)."),
     dedup_similarity: float = typer.Option(0.90, "--dedup-similarity", help="Similarity threshold for --dedup (0–1, default 0.90)."),
     frametime: float = typer.Option(0.0, "--frametime", help="Hold each unique deduped frame for N seconds. 0 = keep original timing."),
@@ -104,12 +105,13 @@ def process(
         idle_threshold=idle_threshold,
         keyframes=keyframes,
         subtitles=subtitles,
+        enrichment=enrichment,
     )
 
     typer.echo(f"Input:   {input_path}")
     typer.echo(f"Output:  {output}")
     max_label = f"{max_duration}s" if max_duration > 0 else "unlimited"
-    typer.echo(f"Config:  max_duration={max_label}, idle_threshold={config.idle_threshold}, keyframes={config.keyframes}, subtitles={config.subtitles}")
+    typer.echo(f"Config:  max_duration={max_label}, idle_threshold={config.idle_threshold}, keyframes={config.keyframes}, subtitles={config.subtitles}, enrichment={config.enrichment}")
 
     analyse_path = input_path
     dedup_tmp: Optional[Path] = None

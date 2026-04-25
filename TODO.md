@@ -19,7 +19,7 @@ Tasks ordered by priority. Each has loop mode, files, plan, and acceptance crite
   2. Wire the option through to `ReelifyConfig(enrichment=enrichment, ...)`.
   3. Add a CLI test that invokes `process` with `--enrichment` and verifies enrichment is triggered (mock the vision provider).
 - **Acceptance:** The `--enrichment` flag is available in the CLI, reaches `ReelifyConfig`, and the new test confirms the enrichment branch executes.
-- **Status:** [ ] todo
+- **Status:** [x] done
 
 ## P1 — High priority
 
