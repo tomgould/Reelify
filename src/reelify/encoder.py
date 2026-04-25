@@ -1,4 +1,6 @@
+import os
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, Future
 from pathlib import Path
 import subprocess
 import tempfile
@@ -88,25 +90,33 @@ def encode(
         tmp_path = Path(tmpdir)
         segment_files: list[Path] = []
 
-        for idx, seg in enumerate(active_segments):
-            segment_file = tmp_path / f"seg_{idx:04d}.mp4"
-            cmd = _build_segment_command(
-                input_path,
-                segment_file,
-                seg.start_frame,
-                seg.end_frame,
-                seg.speed,
-                fps,
-                audio,
-            )
-            result = subprocess.run(cmd, capture_output=True, check=False)
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"FFmpeg segment encoding failed: {result.stderr.decode('utf-8', errors='replace')}"
+        with ThreadPoolExecutor(max_workers=os.cpu_count()) as pool:
+            futures: list[tuple[Future, Path]] = []
+            for idx, seg in enumerate(active_segments):
+                segment_file = tmp_path / f"seg_{idx:04d}.mp4"
+                cmd = _build_segment_command(
+                    input_path,
+                    segment_file,
+                    seg.start_frame,
+                    seg.end_frame,
+                    seg.speed,
+                    fps,
+                    audio,
                 )
-            segment_files.append(segment_file)
-            if progress_callback:
-                progress_callback(idx + 1, len(active_segments))
+                future = pool.submit(subprocess.run, cmd, capture_output=True, check=False)
+                futures.append((future, segment_file))
+                segment_files.append(segment_file)
+
+            completed = 0
+            for future, segment_file in futures:
+                result = future.result()
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"FFmpeg segment encoding failed: {result.stderr.decode('utf-8', errors='replace')}"
+                    )
+                completed += 1
+                if progress_callback:
+                    progress_callback(completed, len(active_segments))
 
         concat_list = tmp_path / "concat_list.txt"
         with concat_list.open("w") as f:

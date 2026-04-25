@@ -65,7 +65,7 @@ Tasks ordered by priority. Each has loop mode, files, plan, and acceptance crite
   2. Collect results in order.
   3. Preserve the `progress_callback` (fire it as each future completes).
 - **Acceptance:** Segments are encoded in parallel, results remain in the correct order, progress callbacks fire per completed segment, and all encoder tests pass.
-- **Status:** [ ] todo
+- **Status:** [x] done
 
 ### [LOOP: Micro] Code quality: `subtitles.py` duplicated ffmpeg call (#10)
 - **Files:** `src/reelify/subtitles.py`

@@ -1,5 +1,8 @@
+import random
 import subprocess
+import time
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import cv2
 import numpy as np
@@ -89,3 +92,64 @@ def test_encode_webm_input(tmp_path: Path) -> None:
     encode(webm_path, output, segments, fps=10.0, width=320, height=240)
     assert output.exists()
     assert output.stat().st_size > 1024
+
+
+@patch("reelify.encoder.subprocess.run")
+def test_encode_parallel_order(mock_run: MagicMock, tmp_path: Path) -> None:
+    input_path = tmp_path / "input.mp4"
+    input_path.write_text("fake")
+
+    segment_calls: list[list[str]] = []
+    concat_lines: list[str] = []
+
+    def side_effect(cmd: list[str], **kwargs: object) -> MagicMock:
+        result = MagicMock()
+        result.returncode = 0
+        result.stderr = b""
+        result.stdout = b""
+
+        if cmd[0] == "ffprobe":
+            result.stdout = b"audio\n"
+            return result
+
+        if "-f" in cmd and "concat" in cmd:
+            output_path = Path(cmd[-1])
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text("fake_output")
+            concat_list_path = Path(cmd[cmd.index("-i") + 1])
+            if concat_list_path.exists():
+                concat_lines.extend(concat_list_path.read_text().strip().split("\n"))
+            return result
+
+        # Segment encoding
+        segment_calls.append(cmd)
+        time.sleep(random.uniform(0.01, 0.03))
+        segment_file = Path(cmd[-1])
+        segment_file.parent.mkdir(parents=True, exist_ok=True)
+        segment_file.write_text("fake_segment")
+        return result
+
+    mock_run.side_effect = side_effect
+
+    segments = [
+        Segment(start_frame=0, end_frame=10, speed=1.0),
+        Segment(start_frame=10, end_frame=20, speed=2.0),
+        Segment(start_frame=20, end_frame=30, speed=1.0),
+    ]
+    output = tmp_path / "output.mp4"
+
+    progress_calls: list[tuple[int, int]] = []
+    def progress_callback(done: int, total: int) -> None:
+        progress_calls.append((done, total))
+
+    encode(input_path, output, segments, fps=10.0, width=320, height=240, progress_callback=progress_callback)
+
+    assert output.exists()
+    assert len(segment_calls) == 3
+
+    # Verify concat list order
+    assert len(concat_lines) == 3
+    for i, line in enumerate(concat_lines):
+        assert f"seg_{i:04d}.mp4" in line
+
+    assert progress_calls == [(1, 3), (2, 3), (3, 3)]
