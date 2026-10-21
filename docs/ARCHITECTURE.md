@@ -6,7 +6,7 @@ The Reelify pipeline processes a long screen recording through five discrete sta
 
 - **Analyse**: compute per-frame motion scores with OpenCV
 - **Classify**: group frames into idle/active chunks with margin padding
-- **Speed-map**: assign each chunk a target speed (cut, 8×, 3×, 1×)
+- **Speed-map**: drop idle chunks and, with a target length, speed up the rest evenly (at most 8×)
 - **Encode**: assemble segments via FFmpeg concat demuxer + `setpts`
 - **Enrich (optional)**: extract representative scene-change JPEGs and caption them with an LLM vision provider
 
@@ -28,22 +28,14 @@ Each chunk is assigned a playback speed:
 
 | Chunk type | Speed | Notes |
 |------------|-------|-------|
-| idle       | cut   | Dropped entirely; if audio is present in a future version, use 8× instead |
-| low-activity | 3×  | Not yet distinguished in current builds; active chunks below a second speed threshold could map here |
-| active     | 1×    | Preserved at normal speed, ideally copied without re-encode |
+| idle       | cut   | Dropped entirely |
+| active     | 1×    | Kept at normal speed, unless a target length applies |
 
-The speed map is a list of `(start_time, end_time, speed)` tuples. The total duration after applying speeds must be <= `max_duration` (default 120 s). If the map exceeds the limit, speeds of the longest active chunks can be increased iteratively.
+The speed map is a list of `Segment(start_frame, end_frame, speed)`. With `--max-duration`, if the kept segments add up to more than the target, all of them get the same speed, `total / target`, capped at 8×, so a target can be missed. Without it (the default), nothing is sped up. There's no separate low-activity tier yet.
 
 ## Stage 4: FFmpeg Encode
 
-FFmpeg encodes the final video using the concat demuxer. Each segment is described by a concat file entry that optionally applies the `setpts` filter for speed changes:
-
-    file 'segment_0.mp4'
-    inpoint 12.500
-    outpoint 45.200
-    ...
-
-Active 1× segments are copied (`-c copy`) when possible to avoid generation loss. Speed-adjusted segments are re-encoded with a fast preset (`libx264` / `libx265`). The concat demuxer guarantees frame-accurate stitching.
+Each kept segment is encoded on its own, several at once, then the pieces are joined with the concat demuxer (`-c copy`). A segment is cut with `-ss` and `-t` before `-i`, so both are measured on the source's timeline; because every segment is re-encoded with `libx264`, FFmpeg makes that seek frame-accurate. The video filter is `setpts=(PTS-STARTPTS)/speed,fps=<source fps>:round=up`, which keeps the segment's first frame and the source frame rate, so N frames at speed S become ceil(N / S) frames. Sound is retimed with a chain of `atempo` filters of at most 2× each.
 
 ## Stage 5 (optional): Keyframe Extraction & Vision Enrichment
 

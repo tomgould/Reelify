@@ -22,7 +22,7 @@ The pipeline runs in five stages:
 
 1. **Analyse**: compute per-frame motion scores with OpenCV
 2. **Classify**: group frames into idle/active chunks with margin padding
-3. **Speed-map**: assign each chunk a target speed (cut, 8×, 3×, 1×)
+3. **Speed-map**: drop idle chunks and, with `--max-duration`, speed up the rest evenly to fit (at most 8×)
 4. **Encode**: assemble segments via FFmpeg concat demuxer + `setpts`
 5. **Enrich (optional)**: extract keyframes and caption them with a local or API vision model
 
@@ -34,7 +34,13 @@ The pipeline runs in five stages:
 reelify process input.webm
 ```
 
-Produces `input_summary.mp4` with idle gaps removed and low-activity sections sped up.
+Produces `input_summary.mp4` with idle gaps removed. Nothing is sped up unless you set a target length:
+
+```bash
+reelify process input.webm --max-duration 120
+```
+
+If what's left after the cuts is longer than the target, every kept segment is sped up by the same amount, to at most 8×.
 
 ### `reelify analyse`, analyse with LLM vision, output JSON
 
