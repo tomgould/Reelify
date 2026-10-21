@@ -58,8 +58,8 @@ def _build_segment_command(
     # Restart the segment's clock at zero and divide it by the speed. fps then
     # keeps the source frame rate: round=up keeps the segment's first frame,
     # then the last frame at or before each output frame's time, so N frames
-    # at speed S become ceil(N / S) frames. The scale pads odd dimensions to
-    # even, as libx264 requires.
+    # at speed S become ceil(N / S) frames. The scale rounds odd dimensions
+    # down to even, as libx264 requires.
     vf = (
         f"setpts=(PTS-STARTPTS)/{speed},"
         f"fps={fps}:round=up,"
