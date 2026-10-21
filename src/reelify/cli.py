@@ -30,27 +30,37 @@ _PRESETS: dict[str, dict] = {
 
 
 def _dedup_video(input_path: Path, similarity: float = 0.98, frametime: float = 0.0) -> Path:
-    """Return a temp file with near-duplicate frames removed via ffmpeg scene filter.
+    """Return a temp file with near-duplicate frames removed via ffmpeg's mpdecimate filter.
+
+    mpdecimate compares each frame with the last frame it kept, in 8x8 blocks,
+    and drops it when no block differs by more than (1 - similarity) of full
+    scale per pixel on average and only a few differ by more than 5/12 of that.
+    The first frame is always kept. (The select filter's scene score isn't a
+    similarity: it stays near zero through steady motion such as a scroll.)
 
     frametime > 0 holds each unique frame for that many seconds in the output.
     """
-    threshold = round(1.0 - similarity, 4)
+    # mpdecimate's thresholds are sums of absolute differences over a 64-pixel
+    # block; lo keeps the filter's default ratio to hi of 5 to 12.
+    hi = round(64 * 255 * (1.0 - similarity))
+    lo = round(hi * 5 / 12)
+    decimate = f"mpdecimate=hi={hi}:lo={lo}"
     ntf = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
     ntf.close()
     tmp = Path(ntf.name)
 
     if frametime > 0:
-        # Space selected frames frametime seconds apart; output at matching fps
+        # Space kept frames frametime seconds apart; output at matching fps
         out_fps = round(1.0 / frametime, 6)
         vf = (
-            f"select='gt(scene,{threshold})',"
+            f"{decimate},"
             f"setpts=N*{frametime}/TB,"
             f"scale=trunc(iw/2)*2:trunc(ih/2)*2"
         )
         extra = ["-r", str(out_fps)]
     else:
         vf = (
-            f"select='gt(scene,{threshold})',"
+            f"{decimate},"
             f"setpts=N/FRAME_RATE/TB,"
             f"scale=trunc(iw/2)*2:trunc(ih/2)*2"
         )
