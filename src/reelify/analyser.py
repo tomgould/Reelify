@@ -17,7 +17,10 @@ class AnalysisResult:
 
 
 def _probe(video_path: Path) -> tuple[float, float, int, int]:
-    """Return (duration, fps, width, height) via ffprobe."""
+    """Return (duration, fps, width, height) via ffprobe.
+
+    Raises ValueError if the file can't be read or has no video stream.
+    """
     result = subprocess.run(
         [
             "ffprobe", "-v", "quiet",
@@ -28,8 +31,10 @@ def _probe(video_path: Path) -> tuple[float, float, int, int]:
         ],
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
     )
+    if result.returncode != 0:
+        raise ValueError(f"Cannot open video: {video_path}")
     lines = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
     width = height = fps_val = duration = 0.0
     for line in lines:
@@ -44,6 +49,8 @@ def _probe(video_path: Path) -> tuple[float, float, int, int]:
                 duration = float(parts[0])
             except ValueError:
                 pass
+    if width <= 0 or height <= 0:
+        raise ValueError(f"No video stream in {video_path}")
     return duration, fps_val, int(width), int(height)
 
 
