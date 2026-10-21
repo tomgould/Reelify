@@ -45,3 +45,5 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Test this checkout's code, even if another copy of reelify is installed.
+pythonpath = ["src"]
