@@ -36,28 +36,38 @@ def _build_segment_command(
     fps: float,
     audio: bool,
 ) -> list[str]:
-    start_time = start_frame / fps
-    duration = (end_frame - start_frame) / fps
+    # Seek and limit on the input side (-ss and -t before -i), so both are
+    # measured on the source's timeline before setpts changes it. As output
+    # options they were measured after setpts, which cut sped-up segments from
+    # the wrong part of the video. Every segment is re-encoded, so FFmpeg
+    # decodes from the keyframe before the seek point and drops frames until it
+    # gets there, which makes the cut frame-accurate. Both ends sit halfway
+    # between two frames, so rounding can't pull in a frame from either side.
+    half_frame = 0.5 / fps
+    start_time = max(0.0, start_frame / fps - half_frame)
+    duration = (end_frame - start_frame) / fps - half_frame
 
     cmd = [
         "ffmpeg",
         "-y",
+        "-ss", f"{start_time:.6f}",
+        "-t", f"{duration:.6f}",
         "-i", str(input_path),
-        # Accurate (post-input) seek — slower than pre-input but avoids corrupt first frames.
-        "-ss", str(start_time),
-        "-t", str(duration),
     ]
 
-    # Pad odd dimensions to even — libx264 requires width/height divisible by 2
-    scale_filter = "scale=trunc(iw/2)*2:trunc(ih/2)*2"
-
-    if speed != 1.0:
-        vf = f"setpts=PTS/{speed},{scale_filter}"
-        cmd.extend(["-vf", vf])
-        if audio:
-            cmd.extend(["-af", _atempo_chain(speed)])
-    else:
-        cmd.extend(["-vf", scale_filter])
+    # Restart the segment's clock at zero and divide it by the speed. fps then
+    # keeps the source frame rate: round=up keeps the segment's first frame,
+    # then the last frame at or before each output frame's time, so N frames
+    # at speed S become ceil(N / S) frames. The scale pads odd dimensions to
+    # even, as libx264 requires.
+    vf = (
+        f"setpts=(PTS-STARTPTS)/{speed},"
+        f"fps={fps}:round=up,"
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2"
+    )
+    cmd.extend(["-vf", vf])
+    if audio and speed != 1.0:
+        cmd.extend(["-af", _atempo_chain(speed)])
 
     cmd.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "23", "-pix_fmt", "yuv420p"])
 
